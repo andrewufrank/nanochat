@@ -20,6 +20,7 @@ main = do
     [path] -> pure (path, 500)
     [path, count] | Just n <- readMaybe count, n > 0 -> pure (path, n)
     _ -> die "Usage: nanochat [dataset.txt [positive-training-steps]]"
+
   raw <- TextIO.readFile path
   let tokenizer = buildTokenizer raw
       encoded = map (tokenToId tokenizer) (Text.words raw)
@@ -29,6 +30,7 @@ main = do
     die ("Dataset needs at least " ++ show (blockSize cfg + 1) ++ " whitespace-separated tokens.")
   putStrLn ("CPU training: " ++ show (length encoded) ++ " tokens, "
     ++ show (vocabSize cfg) ++ " vocabulary entries, " ++ show steps ++ " steps.")
+
   model <- T.sample (NanoChatModelSpec cfg)
   let optimizer = Optim.mkAdam 0 0.9 0.999 (T.flattenParameters model)
       iteration (current, opt) stepNumber = do
@@ -38,6 +40,7 @@ main = do
           putStrLn ("Step " ++ show stepNumber ++ " | loss " ++ show loss)
         pure (updated, nextOpt)
   (trained, _) <- foldM iteration (model, optimizer) [1..steps :: Int]
+  
   putStrLn "Training finished. Enter a message (empty line to quit)."
   chatLoop trained cfg tokenizer
 
