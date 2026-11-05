@@ -58,7 +58,43 @@ configuration/data, causal masking, loss reduction with Adam, dropout/evaluation
 and batched generation beyond the context window.
 
 
-# my notes
+## Download DailyDialog with turn annotations
+
+The preparation script uses Python 3's standard library (no pip packages):
+
+```sh
+python3 scripts/prepare_dailydialog.py
+cabal run nanochat -- data/dailydialog/train.txt 500
+```
+
+It downloads a pinned revision of [roskoN/dailydialog](https://huggingface.co/datasets/roskoN/dailydialog)
+and writes separate `train`, `validation`, and `test` files in `data/dailydialog`:
+
+- `.txt`: one conversation per line, with alternating `[USER]` and `[BOT]` turns.
+  `[END]` follows each bot response and terminates an unpaired final user turn.
+- `.jsonl`: complete conversations with one-based turn numbers, speaker A/B,
+  assigned user/assistant role, text, and the original numeric act/emotion labels.
+- `manifest.json`: source revision, archive hashes, counts, and license attribution.
+
+For example (illustrative text):
+
+```text
+[USER] Hello . [BOT] Hi ! [END] [USER] How are you ? [BOT] Fine , thanks . [END]
+```
+
+The source already separates utterances; speaker roles are assigned by alternating
+turn position, not inferred from dialogue acts or emotions. These are human-human
+conversations, so the assistant label is a training convention. All turns,
+including an odd final turn, are retained. Existing converted files are protected;
+use `--force` to replace them or `--output-dir PATH` for a different directory.
+
+Train only on `train.txt`; keep validation/test separate. The current Haskell
+trainer does not yet evaluate those held-out splits or mask loss to assistant
+tokens. It reads text as a continuous stream, so random windows can cross
+conversation boundaries. JSONL keeps the full structure for a future dialogue-aware
+loader. The dataset's published license is CC BY-NC-SA 4.0, per its
+[loader metadata](https://huggingface.co/datasets/roskoN/dailydialog/blob/main/dailydialog.py).
+
+# my notes and useful links
 on Hasktorch:
     https://www.stackbuilders.com/insights/hasktorch-libtorch-haskell-bindings-for-deep-learning-using-ffi/
- 

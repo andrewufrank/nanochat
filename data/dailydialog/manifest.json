@@ -1,0 +1,26 @@
+{
+  "source": "https://huggingface.co/datasets/roskoN/dailydialog",
+  "revision": "5214b2a66405abf87fd229e5c1007985501ffe3e",
+  "license": "CC BY-NC-SA 4.0",
+  "roles": "Alternating speakers A/B mapped to user/assistant; not original assistant labels",
+  "splits": {
+    "train": {
+      "url": "https://huggingface.co/datasets/roskoN/dailydialog/resolve/5214b2a66405abf87fd229e5c1007985501ffe3e/train.zip",
+      "sha256": "c5179ab5a9a86a77b9d29114087c6b82cc4cb366abea25a43a0c24be761133f7",
+      "dialogues": 11118,
+      "turns": 87170
+    },
+    "validation": {
+      "url": "https://huggingface.co/datasets/roskoN/dailydialog/resolve/5214b2a66405abf87fd229e5c1007985501ffe3e/validation.zip",
+      "sha256": "1dbcb00a0b4fe709788ce6604b561ba76557c88fe41f049d7899287838f0ec6a",
+      "dialogues": 1000,
+      "turns": 8069
+    },
+    "test": {
+      "url": "https://huggingface.co/datasets/roskoN/dailydialog/resolve/5214b2a66405abf87fd229e5c1007985501ffe3e/test.zip",
+      "sha256": "cfffc0bab93a3697c2562a9ee35c4533f0de2a93e86a4e4d3ea45cbde4bea00f",
+      "dialogues": 1000,
+      "turns": 7740
+    }
+  }
+}
