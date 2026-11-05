@@ -4,12 +4,16 @@ synopsis: A transformer language model implemented with Hasktorch
 
 dependencies:
   - base >= 4.14 && < 5
-  - hasktorch
+  - hasktorch >= 0.2.2 && < 0.2.3
 
 library:
   source-dirs: src
   exposed-modules:
     - NanoChat
+    - NanoChat.Training
+  dependencies:
+    - containers
+    - text
   ghc-options:
     - -Wall
 
@@ -22,5 +26,15 @@ executables:
       - text
     default-extensions:
       - OverloadedStrings
+    ghc-options:
+      - -Wall
+
+tests:
+  nanochat-test:
+    main: Main.hs
+    source-dirs: test
+    dependencies:
+      - nanochat
+      - text
     ghc-options:
       - -Wall

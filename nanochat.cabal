@@ -12,6 +12,7 @@ build-type:     Simple
 library
   exposed-modules:
       NanoChat
+      NanoChat.Training
   other-modules:
       Paths_nanochat
   hs-source-dirs:
@@ -19,7 +20,9 @@ library
   ghc-options: -Wall
   build-depends:
       base >=4.14 && <5
-    , hasktorch
+    , containers
+    , hasktorch ==0.2.2.*
+    , text
   default-language: Haskell2010
 
 executable nanochat
@@ -33,7 +36,22 @@ executable nanochat
   ghc-options: -Wall
   build-depends:
       base >=4.14 && <5
-    , hasktorch
+    , hasktorch ==0.2.2.*
+    , nanochat
+    , text
+  default-language: Haskell2010
+
+test-suite nanochat-test
+  type: exitcode-stdio-1.0
+  main-is: Main.hs
+  other-modules:
+      Paths_nanochat
+  hs-source-dirs:
+      test
+  ghc-options: -Wall
+  build-depends:
+      base >=4.14 && <5
+    , hasktorch ==0.2.2.*
     , nanochat
     , text
   default-language: Haskell2010
