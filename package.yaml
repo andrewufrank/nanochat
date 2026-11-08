@@ -1,6 +1,15 @@
 name: nanochat
 version: 0.1.0.0
-synopsis: A transformer language model implemented with Hasktorch
+synopsis: A transformer language model implemented with Hasktorch, 
+  inspired by Karpathy's nanochat. Mostly for learning purposes 
+  it trains, e.g. with included tiny example or DailyDialog, and runs on an ordinary cpu. 
+license:      GPL
+license-file: LICENSE
+github:       andrewufrank/
+maintainer:   Andrew U. Frank <frank@geoinfo.tuwien.ac.at>
+author:       Andrew Frank
+copyright:    2026 Andrew U. Frank
+category: ai
 
 dependencies:
   - base >= 4.14 && < 5
@@ -9,7 +18,7 @@ dependencies:
 library:
   source-dirs: src
   exposed-modules:
-    - NanoChat
+    - NanoChat.Transformer
     - NanoChat.Tokenizer
     - NanoChat.Training
     - NanoChat.Checkpoint

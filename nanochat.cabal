@@ -11,7 +11,7 @@ build-type:     Simple
 
 library
   exposed-modules:
-      NanoChat
+      NanoChat.Transformer
       NanoChat.Tokenizer
       NanoChat.Training
       NanoChat.Checkpoint

@@ -1,0 +1,4 @@
+[USER] describe a red boat [BOT] the boat is red [END]
+[USER] describe a blue cup [BOT] the cup is blue [END]
+[USER] describe a green kite [BOT] the kite is green [END]
+[USER] describe a gold ball [BOT] the ball is gold [END]

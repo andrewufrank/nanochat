@@ -7,7 +7,7 @@ import System.Environment (getArgs)
 import System.Exit (die)
 import System.IO (hFlush, isEOF, stdout)
 import qualified Torch as T
-import NanoChat
+import NanoChat.Transformer
 import NanoChat.Checkpoint
 import NanoChat.Tokenizer
 
