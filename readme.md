@@ -214,10 +214,10 @@ loader. The dataset's published license is CC BY-NC-SA 4.0, per its
 # my notes and useful links
 on Hasktorch:
     https://www.stackbuilders.com/insights/hasktorch-libtorch-haskell-bindings-for-deep-learning-using-ffi/
-from stella: 
+on transformer: 
     https://jalammar.github.io/visualizing-neural-machine-translation-mechanics-of-seq2seq-models-with-attention/
     https://jalammar.github.io/illustrated-transformer/
-
+    https://nlp.seas.harvard.edu/annotated-transformer/#encoder-and-decoder-stacks
     https://github.com/tensorflow/nmt
 
 state space models 
