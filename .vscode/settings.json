@@ -1,0 +1,4 @@
+{
+    "haskell.trace.client": "debug",
+    "haskell.trace.server": "verbose"
+}

@@ -1,11 +1,16 @@
 module Main where
 
-import Control.Exception (IOException, try)
-import Control.Monad (foldM, unless)
+import Control.Exception (IOException, bracket, try)
+import Control.Monad (foldM, unless, when)
 import qualified Data.Text as Text
 import qualified Torch as T
 import qualified Torch.Optim as Optim
+import qualified Torch.Serialize as Serialize
+import System.Directory (doesFileExist, getTemporaryDirectory, removeFile)
+import System.IO (hClose, openBinaryTempFile)
 import NanoChat
+import NanoChat.Checkpoint
+import NanoChat.Tokenizer
 import NanoChat.Training
 
 assert :: String -> Bool -> IO ()
@@ -20,11 +25,11 @@ main = do
   assert "Special token roundtrip" (idToToken tokenizer (token "[END]") == Text.pack "[END]")
   assert "Negative token IDs are safe" (idToToken tokenizer (-1) == Text.pack "[UNK]")
   let sequenceTokens = T.asTensor ([0..4] :: [Int])
-  (bx, by) <- getBatch sequenceTokens 2 4
+  (bx, by) <- sampleBatch sequenceTokens 2 4
   assert "Minimal-length dataset and shifted targets"
     (T.asValue bx == ([[0,1,2,3],[0,1,2,3]] :: [[Int]]) &&
      T.asValue by == ([[1,2,3,4],[1,2,3,4]] :: [[Int]]))
-  badBatch <- try (getBatch sequenceTokens 2 5) :: IO (Either IOException (T.Tensor, T.Tensor))
+  badBatch <- try (sampleBatch sequenceTokens 2 5) :: IO (Either IOException (T.Tensor, T.Tensor))
   assert "Reject too-short datasets" (either (const True) (const False) badBatch)
   let cfg = Config 4 8 2 1 6 0
   assert "Reject invalid head width" (either (const True) (const False) (validateConfig (cfg {nHead = 3})))
@@ -64,4 +69,45 @@ main = do
     Nothing -> ioError (userError "Missing training loss")
     Just loss -> assert "Dropout training loss is finite"
       (let value = T.asValue loss :: Float in not (isNaN value || isInfinite value))
+  -- Reload the trained model and its exact vocabulary without a dataset file.
+  -- Non-ASCII text exercises UTF-8 metadata serialization as well.
+  let savedTokenizer = buildTokenizer (Text.pack "hello grüß")
+      info = ModelInfo 1 cfg (tokenizerVocabulary savedTokenizer) 20 "missing-dataset.txt" final 2 0.001
+  withModelPath $ \path -> do
+    saveModel path info trained
+    (loaded, loadedTokenizer, loadedInfo) <- loadModel path
+    assert "Metadata survives save/load" (loadedInfo == info)
+    assert "Vocabulary IDs survive save/load"
+      (tokenizerVocabulary loadedTokenizer == tokenizerVocabulary savedTokenizer &&
+       all (\word -> tokenToId loadedTokenizer word == tokenToId savedTokenizer word)
+         (tokenizerVocabulary savedTokenizer))
+    let (before, _) = modelForward trained cfg x Nothing
+        (after, _) = modelForward loaded (modelConfig loadedInfo) x Nothing
+    assert "Reloaded weights produce identical logits"
+      ((T.asValue (T.max (T.abs (before - after))) :: Float) == 0)
+    response <- generate loaded cfg x 2
+    assert "Reloaded model generates" (T.shape response == [2,6])
+    overwrite <- try (saveModel path info model) :: IO (Either IOException ())
+    assert "Existing model is protected" (either (const True) (const False) overwrite)
+    -- Keep valid metadata but remove the model weights; loading must reject it.
+    tensors <- Serialize.load path
+    Serialize.save (take 1 tensors) path
+    damaged <- try (loadModel path) :: IO (Either IOException (NanoChatModel, Tokenizer, ModelInfo))
+    assert "Reject incomplete parameter archive" (either (const True) (const False) damaged)
+  assert "Reject duplicate saved tokens"
+    (either (const True) (const False) (tokenizerFromVocabulary
+      (tokenizerVocabulary tokenizer ++ [Text.pack "hello"])))
   putStrLn "All NanoChat checks passed."
+
+withModelPath :: (FilePath -> IO a) -> IO a
+withModelPath = bracket acquire cleanup
+  where
+    acquire = do
+      directory <- getTemporaryDirectory
+      (path, handle) <- openBinaryTempFile directory "nanochat-test.model"
+      hClose handle
+      removeFile path
+      pure path
+    cleanup path = do
+      exists <- doesFileExist path
+      when exists (removeFile path)

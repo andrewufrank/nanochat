@@ -17,11 +17,13 @@ libraries at runtime.
 hpack
 cabal build all
 cabal test --test-show-details=direct
-cabal run nanochat -- chat_dataset.txt 500
+cabal run nanochat-train -- models/experiment-01.model chat_dataset.txt 500
+cabal run nanochat -- models/experiment-01.model
 ```
 
-The optional arguments are the dataset path (default `chat_dataset.txt`) and a
-positive training-step count (default 500). The dataset must contain at least 129
+Training takes a model filename, a dataset path, and an optional positive step
+count (default 500). Chat takes only a saved model filename and does not need the
+original dataset. The dataset must contain at least 129
 whitespace-separated tokens for the default context size of 128. For dialogue
 experiments, use text such as `[USER] hello [BOT] hi there [END]`, repeated across
 your examples. The tokenizer is a simple word tokenizer with reserved `[UNK]`,
@@ -30,11 +32,37 @@ words plus those markers. It does not use BPE or tiktoken.
 
 Training runs on CPU with batches of eight. Adjust `defaultConfig` in
 `src/NanoChat.hs` for smaller experiments; embedding width must be divisible by
-head count. Dropout is enabled only during training. After training, enter chat
-messages; a blank line or EOF exits. Output is capped at 30 new tokens and is
-displayed up to the first `[END]`. Every run trains from scratch; weights and the
-tokenizer are not yet saved. Tiny datasets and short training runs are useful for
-experiments, but will not produce a capable chatbot.
+head count. Dropout is enabled only during training. Training saves the model
+and exits; run the separate chat executable to enter messages. A blank line or
+EOF exits chat. Output is capped at 30 new tokens and is displayed up to the first
+`[END]`. Tiny datasets and short training runs are useful for experiments, but
+will not produce a capable chatbot.
+
+Each `.model` is a single LibTorch archive containing model weights and versioned
+JSON metadata (stored as a byte tensor): the exact configuration, vocabulary in
+token-ID order, training-step count, dataset path, batch size, learning rate, and
+last batch's training loss. Loading uses the saved configuration, even if you
+have since changed `defaultConfig`. The last batch loss is not a validation score.
+
+Use a different filename for each experiment; existing files are refused before
+training starts. Parent directories are created automatically, and saving uses a
+temporary file before publishing the completed archive. For example:
+
+```sh
+cabal run nanochat-train -- models/dialogue-2k.model data/dailydialog/train.txt 2000
+cabal run nanochat-train -- models/dialogue-10k.model data/dailydialog/train.txt 10000
+cabal run nanochat -- models/dialogue-2k.model
+cabal run nanochat -- models/dialogue-10k.model
+```
+
+These are independent training runs. Saving currently happens at the end of a
+successful run; interrupted runs are not checkpointed. Adam state is not saved,
+and resuming training remains a future feature. The files are for this Haskell
+model format, not upstream NanoChat/nanoGPT checkpoints.
+
+The training entry point is `app/train/Main.hs`, chat is `app/chat/Main.hs`,
+tokenization is in `src/NanoChat/Tokenizer.hs`, training is in
+`src/NanoChat/Training.hs`, and persistence is in `src/NanoChat/Checkpoint.hs`.
 
 This workspace's `cabal.project.local` embeds the installed LibTorch library
 directory in the executable and test binaries' runtime search path. Normal
@@ -55,7 +83,8 @@ in the environment; benchmark larger thread counts for your machine/model.
 
 The test suite checks vocabulary handling, shifted training batches, invalid
 configuration/data, causal masking, loss reduction with Adam, dropout/evaluation,
-and batched generation beyond the context window.
+batched generation beyond the context window, and model save/load (including
+exact logits, Unicode vocabulary, overwrite protection, and incomplete archives).
 
 
 ## Download DailyDialog with turn annotations
@@ -64,7 +93,8 @@ The preparation script uses Python 3's standard library (no pip packages):
 
 ```sh
 python3 scripts/prepare_dailydialog.py
-cabal run nanochat -- data/dailydialog/train.txt 500
+cabal run nanochat-train -- models/dailydialog.model data/dailydialog/train.txt 500
+cabal run nanochat -- models/dailydialog.model
 ```
 
 It downloads a pinned revision of [roskoN/dailydialog](https://huggingface.co/datasets/roskoN/dailydialog)
@@ -98,3 +128,17 @@ loader. The dataset's published license is CC BY-NC-SA 4.0, per its
 # my notes and useful links
 on Hasktorch:
     https://www.stackbuilders.com/insights/hasktorch-libtorch-haskell-bindings-for-deep-learning-using-ffi/
+from stella: 
+    https://jalammar.github.io/visualizing-neural-machine-translation-mechanics-of-seq2seq-models-with-attention/
+    https://jalammar.github.io/illustrated-transformer/
+
+    https://github.com/tensorflow/nmt
+
+state space models 
+    https://huggingface.co/blog/lbourdois/get-on-the-ssm-train
+    https://acingai.com/articles/state-space-models-2026
+
+a dataset with math examples (high school level)
+    https://huggingface.co/datasets/openai/gsm8k
+
+    https://github.com/mlabonne/llm-datasets

@@ -1,39 +1,16 @@
 module NanoChat.Training
-  ( Tokenizer, buildTokenizer, tokenToId, idToToken, tokenizerSize
-  , getBatch, trainStep
+  ( sampleBatch, trainStep, trainModel
   ) where
 
-import qualified Data.Map.Strict as Map
-import qualified Data.IntMap.Strict as IntMap
-import qualified Data.Set as Set
-import qualified Data.Text as Text
+import Control.Monad (foldM, when)
 import Torch (Tensor)
 import qualified Torch as T
 import qualified Torch.Optim as Optim
 import NanoChat
 
--- A word tokenizer, not BPE. Reserve a real unknown token and chat markers.
-data Tokenizer = Tokenizer (Map.Map Text.Text Int) (IntMap.IntMap Text.Text)
-
-buildTokenizer :: Text.Text -> Tokenizer
-buildTokenizer input = Tokenizer (Map.fromList entries)
-  (IntMap.fromList [(i, word) | (word, i) <- entries])
-  where
-    reserved = map Text.pack ["[UNK]", "[USER]", "[BOT]", "[END]"]
-    wordsOnly = Set.fromList (Text.words input) `Set.difference` Set.fromList reserved
-    entries = zip (reserved ++ Set.toAscList wordsOnly) [0..]
-
-tokenToId :: Tokenizer -> Text.Text -> Int
-tokenToId (Tokenizer forward _) word = Map.findWithDefault 0 word forward
-
-idToToken :: Tokenizer -> Int -> Text.Text
-idToToken (Tokenizer _ backward) i = IntMap.findWithDefault (Text.pack "[UNK]") i backward
-
-tokenizerSize :: Tokenizer -> Int
-tokenizerSize (Tokenizer forward _) = Map.size forward
-
-getBatch :: Tensor -> Int -> Int -> IO (Tensor, Tensor)
-getBatch allTokens batchSize contextSize
+sampleBatch :: Tensor -> Int -> Int -> IO (Tensor, Tensor)
+-- | select batchSize (e.g. 8) randmom positios and takes at each position contextSize (e.g. 128) tokens (i.e. words)
+sampleBatch allTokens batchSize contextSize
   | length (T.shape allTokens) /= 1 = ioError (userError "Training tokens must be a vector.")
   | batchSize <= 0 || contextSize <= 0 = ioError (userError "Batch and context sizes must be positive.")
   | total <= contextSize = ioError (userError "Dataset needs at least blockSize + 1 tokens.")
@@ -45,6 +22,30 @@ getBatch allTokens batchSize contextSize
       pure (T.stack (T.Dim 0) (map (window 0) indices),
             T.stack (T.Dim 0) (map (window 1) indices))
   where total = T.size 0 allTokens
+
+-- | Train with a fresh Adam optimizer, printing progress and returning the last batch loss.
+-- Arguments are configuration, batch size, step count, dataset tokens, and initial model.
+trainModel :: Config -> Int -> Int -> Tensor -> NanoChatModel
+           -> IO (NanoChatModel, Float)
+trainModel cfg batchSize steps allTokens model
+  | steps <= 0 = ioError (userError "Training step count must be positive.")
+  | otherwise = do
+      let optimizer = Optim.mkAdam 0 0.9 0.999 (T.flattenParameters model)
+      (trained, _, lastLoss) <-
+        foldM (iteration cfg batchSize steps allTokens)
+          (model, optimizer, 0) [1..steps]
+      pure (trained, lastLoss)
+
+-- Carry the updated model and optimizer state into the next iteration.
+iteration :: Config -> Int -> Int -> Tensor
+          -> (NanoChatModel, Optim.Adam, Float) -> Int
+          -> IO (NanoChatModel, Optim.Adam, Float)
+iteration cfg batchSize steps allTokens (current, opt, _) stepNumber = do
+  (x, y) <- sampleBatch allTokens batchSize (blockSize cfg) 
+  (updated, nextOpt, loss) <- trainStep current cfg opt x y
+  when (stepNumber == 1 || stepNumber `mod` 50 == 0 || stepNumber == steps) $
+    putStrLn ("Step " ++ show stepNumber ++ " | loss " ++ show loss)
+  pure (updated, nextOpt, loss)
 
 trainStep :: NanoChatModel -> Config -> Optim.Adam -> Tensor -> Tensor
           -> IO (NanoChatModel, Optim.Adam, Float)

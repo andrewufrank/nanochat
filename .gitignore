@@ -19,7 +19,6 @@ dist-newstyle
 *.jsonl
 unused.txt
 *.autosave*
-cabal.project.local
 ideaHaskellLib
 out
 testForLitText
@@ -38,3 +37,5 @@ docs/site/baked/.shake.database
 stack.yaml.lock
 report.html
 docs/site/resfile4checkProcess.txt
+**.model
+

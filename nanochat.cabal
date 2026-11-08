@@ -12,30 +12,52 @@ build-type:     Simple
 library
   exposed-modules:
       NanoChat
+      NanoChat.Tokenizer
       NanoChat.Training
+      NanoChat.Checkpoint
   other-modules:
       Paths_nanochat
   hs-source-dirs:
       src
   ghc-options: -Wall
   build-depends:
-      base >=4.14 && <5
+      aeson
+    , base >=4.14 && <5
+    , bytestring
     , containers
+    , directory
+    , filepath
     , hasktorch ==0.2.2.*
     , text
   default-language: Haskell2010
 
 executable nanochat
-  main-is: nano.hs
+  main-is: Main.hs
   other-modules:
       Paths_nanochat
   hs-source-dirs:
-      app
+      app/chat
   default-extensions:
       OverloadedStrings
   ghc-options: -Wall
   build-depends:
       base >=4.14 && <5
+    , hasktorch ==0.2.2.*
+    , nanochat
+    , text
+  default-language: Haskell2010
+
+executable nanochat-train
+  main-is: Main.hs
+  other-modules:
+      Paths_nanochat
+  hs-source-dirs:
+      app/train
+  ghc-options: -Wall
+  build-depends:
+      base >=4.14 && <5
+    , directory
+    , filepath
     , hasktorch ==0.2.2.*
     , nanochat
     , text
@@ -51,6 +73,7 @@ test-suite nanochat-test
   ghc-options: -Wall
   build-depends:
       base >=4.14 && <5
+    , directory
     , hasktorch ==0.2.2.*
     , nanochat
     , text

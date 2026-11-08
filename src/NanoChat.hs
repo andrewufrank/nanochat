@@ -7,6 +7,7 @@ module NanoChat where
 
 import Control.Monad (foldM, replicateM)
 import Data.Functor.Identity (Identity (..))
+import Data.Aeson (FromJSON, ToJSON)
 import GHC.Generics (Generic)
 import Torch (Tensor, Parameter, Dim (..), KeepDim (..))
 import qualified Torch as T
@@ -14,9 +15,16 @@ import qualified Torch.Functional as F
 import qualified Torch.NN as NN
 
 data Config = Config
-  { blockSize :: Int, nEmbd :: Int, nHead :: Int, nLayer :: Int
-  , vocabSize :: Int, dropout :: Double
-  } deriving (Show, Eq)
+  { blockSize :: Int, 
+  nEmbd :: Int, 
+  nHead :: Int, 
+  nLayer :: Int, 
+  vocabSize :: Int, 
+  dropout :: Double
+  } deriving (Show, Eq, Generic)
+
+instance ToJSON Config
+instance FromJSON Config
 
 defaultConfig :: Config
 defaultConfig = Config 128 128 4 3 256 0.1
@@ -31,19 +39,23 @@ validateConfig Config{..}
 
 data HeadSpec = HeadSpec { headSize :: Int, config :: Config }
 data Head = Head
-  { wQuery :: NN.Linear, wKey :: NN.Linear, wValue :: NN.Linear }
-  deriving (Generic)
+  { wQuery :: NN.Linear, 
+  wKey :: NN.Linear, 
+  wValue :: NN.Linear } deriving (Generic)
+
 instance NN.Parameterized Head
 instance NN.Randomizable HeadSpec Head where
   sample (HeadSpec width cfg) = Head <$> linear <*> linear <*> linear
     where linear = NN.sample (NN.LinearSpec (nEmbd cfg) width)
 
 data MultiHeadAttention = MultiHeadAttention
-  { heads :: [Head], proj :: NN.Linear } deriving (Generic)
+  { heads :: [Head], 
+    proj :: NN.Linear } deriving (Generic)
 instance NN.Parameterized MultiHeadAttention
 
 data FeedForward = FeedForward
-  { fc1 :: NN.Linear, fc2 :: NN.Linear } deriving (Generic)
+  { fc1 :: NN.Linear, 
+    fc2 :: NN.Linear } deriving (Generic)
 instance NN.Parameterized FeedForward
 
 -- Explicitly register the untyped layers' parameters for autograd and Adam.
@@ -69,14 +81,19 @@ layerNormForward (LayerNorm gain bias) x =
   in centered / F.sqrt (variance + 1e-5) * T.toDependent gain + T.toDependent bias
 
 data Block = Block
-  { sa :: MultiHeadAttention, ffwd :: FeedForward
-  , ln1 :: LayerNorm, ln2 :: LayerNorm } deriving (Generic)
+  { sa :: MultiHeadAttention, 
+    ffwd :: FeedForward,
+    ln1 :: LayerNorm, 
+    ln2 :: LayerNorm } deriving (Generic)
 instance NN.Parameterized Block
 
-data NanoChatModel = NanoChatModel
-  { tokenEmbedding :: Embedding, positionEmbedding :: Embedding
-  , blocks :: [Block], lnFinal :: LayerNorm, lmHead :: NN.Linear
-  } deriving (Generic)
+data NanoChatModel = NanoChatModel    -- the model 
+  { tokenEmbedding :: Embedding, 
+    positionEmbedding :: Embedding, 
+    blocks :: [Block], 
+    lnFinal :: LayerNorm, 
+    lmHead :: NN.Linear
+    } deriving (Generic)
 instance NN.Parameterized NanoChatModel
 
 newtype NanoChatModelSpec = NanoChatModelSpec Config
@@ -113,7 +130,7 @@ modelForwardWith dropTensor NanoChatModel{..} Config{..} idx targets
   | otherwise = do
       let positions = T.asTensor ([0 .. t - 1] :: [Int])
       x <- dropTensor (embeddingForward tokenEmbedding idx + embeddingForward positionEmbedding positions)
-      hidden <- foldM blockForward x blocks
+      hidden <- foldM (blockForward dropTensor) x blocks
       let logits = NN.linearForward lmHead (layerNormForward lnFinal hidden)
           loss y
             | T.shape y /= T.shape idx = error "Targets must have the same shape as inputs."
@@ -123,27 +140,34 @@ modelForwardWith dropTensor NanoChatModel{..} Config{..} idx targets
   where
     b = T.size 0 idx
     t = T.size 1 idx
-    headForward Head{..} x = do
-      let q = NN.linearForward wQuery x
-          k = NN.linearForward wKey x
-          v = NN.linearForward wValue x
-          scale = 1 / sqrt (fromIntegral (T.size (-1) k) :: Float)
-          scores = F.mulScalar scale (F.matmul q (F.transpose (Dim (-2)) (Dim (-1)) k))
-          -- Additive [time,time] mask broadcasts across the batch.
-          mask = T.asTensor
-            [[if j > i then negate (1 / 0) else 0 :: Float | j <- [0 .. t - 1]]
-            | i <- [0 .. t - 1]]
-          masked = scores + mask
-      weights <- dropTensor (F.softmax (Dim (-1)) masked)
-      pure (F.matmul weights v)
-    blockForward x Block{..} = do
-      hs <- mapM (\h -> headForward h (layerNormForward ln1 x)) (heads sa)
-      attention <- dropTensor (NN.linearForward (proj sa) (F.cat (Dim (-1)) hs))
-      let residual = x + attention
-          FeedForward{..} = ffwd
-          feed = NN.linearForward fc2 (F.relu (NN.linearForward fc1 (layerNormForward ln2 residual)))
-      output <- dropTensor feed
-      pure (residual + output)
+
+-- | Run one causal attention head on input shaped [batch, time, embedding].
+headForward :: Monad m => (Tensor -> m Tensor) -> Head -> Tensor -> m Tensor
+headForward dropTensor Head{..} x = do
+  let t = T.size 1 x
+      q = NN.linearForward wQuery x
+      k = NN.linearForward wKey x
+      v = NN.linearForward wValue x
+      scale = 1 / sqrt (fromIntegral (T.size (-1) k) :: Float)
+      scores = F.mulScalar scale (F.matmul q (F.transpose (Dim (-2)) (Dim (-1)) k))
+      -- Additive [time,time] mask broadcasts across the batch.
+      mask = T.asTensor
+        [[if j > i then negate (1 / 0) else 0 :: Float | j <- [0 .. t - 1]]
+        | i <- [0 .. t - 1]]
+      masked = scores + mask
+  weights <- dropTensor (F.softmax (Dim (-1)) masked)
+  pure (F.matmul weights v)
+
+-- | Run a transformer block using the supplied training/evaluation dropout action.
+blockForward :: Monad m => (Tensor -> m Tensor) -> Tensor -> Block -> m Tensor
+blockForward dropTensor x Block{..} = do
+  hs <- mapM (\h -> headForward dropTensor h (layerNormForward ln1 x)) (heads sa)
+  attention <- dropTensor (NN.linearForward (proj sa) (F.cat (Dim (-1)) hs))
+  let residual = x + attention
+      FeedForward{..} = ffwd
+      feed = NN.linearForward fc2 (F.relu (NN.linearForward fc1 (layerNormForward ln2 residual)))
+  output <- dropTensor feed
+  pure (residual + output)
 
 -- | Autoregressive sampling, cropping the context to the model's window.
 generate :: NanoChatModel -> Config -> Tensor -> Int -> IO Tensor
